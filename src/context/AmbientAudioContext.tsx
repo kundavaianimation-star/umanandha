@@ -194,38 +194,71 @@ function createAmbientSound(ctx: AudioContext, master: GainNode) {
   }
   scheduleBird();
 
-  // ── Occasional temple bell ─────────────────────────────────
+  // ── Indian temple bell (ghanta) ────────────────────────────
+  // A large metal temple bell: deep fundamental, rich inharmonic
+  // partials, bright metallic strike, long resonant decay.
+  function strikeBell(now: number, vol: number) {
+    // Inharmonic partials characteristic of a struck metal bell
+    const partials = [
+      { f: 330, g: 1.0, d: 5.0 }, // fundamental
+      { f: 495, g: 0.55, d: 3.6 }, // 3rd partial
+      { f: 660, g: 0.4, d: 3.0 },
+      { f: 990, g: 0.28, d: 2.2 },
+      { f: 1320, g: 0.18, d: 1.6 },
+      { f: 1980, g: 0.1, d: 1.1 },
+      { f: 2640, g: 0.07, d: 0.8 },
+      { f: 3960, g: 0.04, d: 0.6 }, // metallic bright ring
+    ];
+
+    for (const p of partials) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = p.f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(vol * p.g, now + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + p.d);
+      osc.connect(g).connect(master);
+      osc.start(now);
+      osc.stop(now + p.d + 0.1);
+    }
+
+    // Striking noise — bright click of the clapper hitting metal
+    const strikeDur = 0.06;
+    const noise = ctx.createBufferSource();
+    const nBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * strikeDur), ctx.sampleRate);
+    const nData = nBuf.getChannelData(0);
+    for (let i = 0; i < nData.length; i++) {
+      nData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / nData.length, 2);
+    }
+    noise.buffer = nBuf;
+    const noiseHP = ctx.createBiquadFilter();
+    noiseHP.type = "highpass";
+    noiseHP.frequency.value = 2000;
+    const noiseG = ctx.createGain();
+    noiseG.gain.setValueAtTime(0, now);
+    noiseG.gain.linearRampToValueAtTime(vol * 0.5, now + 0.005);
+    noiseG.gain.exponentialRampToValueAtTime(0.0005, now + strikeDur);
+    noise.connect(noiseHP).connect(noiseG).connect(master);
+    noise.start(now);
+    noise.stop(now + strikeDur + 0.05);
+  }
+
   function scheduleBell() {
-    const delay = 25 + Math.random() * 45;
+    const delay = 20 + Math.random() * 40;
     setTimeout(() => {
       if (ctx.state === "closed") return;
       const now = ctx.currentTime;
+      const baseVol = 0.05;
 
-      // Fundamental
-      const osc1 = ctx.createOscillator();
-      osc1.type = "sine";
-      osc1.frequency.value = 440;
-      // Overtone
-      const osc2 = ctx.createOscillator();
-      osc2.type = "sine";
-      osc2.frequency.value = 880;
+      strikeBell(now, baseVol);
 
-      const g1 = ctx.createGain();
-      g1.gain.setValueAtTime(0, now);
-      g1.gain.linearRampToValueAtTime(0.03, now + 0.05);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 4);
-
-      const g2 = ctx.createGain();
-      g2.gain.setValueAtTime(0, now);
-      g2.gain.linearRampToValueAtTime(0.015, now + 0.05);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
-
-      osc1.connect(g1).connect(master);
-      osc2.connect(g2).connect(master);
-      osc1.start(now);
-      osc1.stop(now + 4.5);
-      osc2.start(now);
-      osc2.stop(now + 3);
+      // Rich echo — a second fainter strike shortly after
+      // (reverberant temple space)
+      setTimeout(() => {
+        if (ctx.state === "closed") return;
+        strikeBell(ctx.currentTime, baseVol * 0.35);
+      }, 120);
 
       scheduleBell();
     }, delay * 1000);
