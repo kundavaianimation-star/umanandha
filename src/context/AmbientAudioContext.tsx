@@ -245,11 +245,11 @@ function createAmbientSound(ctx: AudioContext, master: GainNode) {
   }
 
   function scheduleBell() {
-    const delay = 20 + Math.random() * 40;
+    const delay = 30 + Math.random() * 60;
     setTimeout(() => {
       if (ctx.state === "closed") return;
       const now = ctx.currentTime;
-      const baseVol = 0.05;
+      const baseVol = 0.04;
 
       strikeBell(now, baseVol);
 
