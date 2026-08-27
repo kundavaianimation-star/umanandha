@@ -22,6 +22,8 @@ export interface SiteContent {
   location: string;
   date: string;
   hero_title: string;
+  hero_description: string;
+  hero_image_url: string;
   about_text: string;
   credits_design: string;
   credits_images: string;

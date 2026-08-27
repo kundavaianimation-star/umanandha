@@ -33,25 +33,38 @@ export function HomePageClient({ photos, siteContent }: HomePageClientProps) {
   const location = siteContent.location || "ASSAM";
   const date = siteContent.date || "23 · 08 · 2026";
   const heroTitle = siteContent.hero_title || "";
+  const heroDescription = siteContent.hero_description || "";
+  const heroImage = siteContent.hero_image_url || "";
 
   return (
     <div className="gallery-track">
       {/* Intro panel */}
       <div className="photo-box" style={{ flex: "0 0 60vw", maxWidth: "60vw" }}>
         <div className="photo-box-image">
-          <div
-            className="w-full h-full flex items-center justify-center"
-            style={{
-              background: "linear-gradient(160deg, #E8DDCA 0%, #DDD2BC 40%, #D4C8AE 100%)",
-            }}
-          >
-            <p
-              className="t-display text-center px-8"
-              style={{ color: "rgba(50,32,20,0.1)", fontSize: "clamp(2rem, 5vw, 4rem)" }}
+          {heroImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={heroImage}
+              alt={siteName}
+              className="photo-box-img object-cover"
+              style={{ maxHeight: "48vh" }}
+            />
+          ) : (
+            <div
+              className="w-full flex items-center justify-center"
+              style={{
+                background: "linear-gradient(160deg, #E8DDCA 0%, #DDD2BC 40%, #D4C8AE 100%)",
+                minHeight: "220px",
+              }}
             >
-              UM A NAND A
-            </p>
-          </div>
+              <p
+                className="t-display text-center px-8"
+                style={{ color: "rgba(50,32,20,0.1)", fontSize: "clamp(2rem, 5vw, 4rem)" }}
+              >
+                UM A NAND A
+              </p>
+            </div>
+          )}
         </div>
         <div className="photo-box-caption">
           <ScrollReveal delay={0} duration={700} style="fadeUp">
@@ -64,11 +77,20 @@ export function HomePageClient({ photos, siteContent }: HomePageClientProps) {
               {date}
             </p>
           </ScrollReveal>
-          <ScrollReveal delay={200} duration={900} style="fadeUp">
-            <h2 className="t-display" style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)" }}>
-              {heroTitle}
-            </h2>
-          </ScrollReveal>
+          {heroTitle && (
+            <ScrollReveal delay={200} duration={900} style="fadeUp">
+              <h2 className="t-display mb-4" style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)" }}>
+                {heroTitle}
+              </h2>
+            </ScrollReveal>
+          )}
+          {heroDescription && (
+            <ScrollReveal delay={300} duration={900} style="fadeUp">
+              <p className="t-p1" style={{ color: "#322014", maxWidth: "44ch" }}>
+                {heroDescription}
+              </p>
+            </ScrollReveal>
+          )}
         </div>
       </div>
 

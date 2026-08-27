@@ -125,7 +125,8 @@ INSERT INTO site_content (key, value) VALUES
   ('site_name', 'UMANANDA'),
   ('location', 'ASSAM'),
   ('date', '23 · 08 · 2026'),
-  ('hero_title', 'A photographic perception archive documenting the Umananda Temple on Peacock Island — through collective anonymous observation.'),
+  ('hero_title', 'Umananda, the Peacock Isle'),
+  ('hero_description', 'A photographic perception archive documenting the Umananda Temple on Peacock Island — through collective anonymous observation.'),
   ('about_text', 'Umananda Perceptions is a visual ethnography project exploring the Umananda Temple on Peacock Island, Assam. Through anonymous collective observation, we build a layered understanding of sacred space — one that resists singular narratives and invites multiple ways of seeing.'),
   ('credits_design', 'Kundavai'),
   ('credits_images', 'Kundavai MKS\nSabaahat Wani')
