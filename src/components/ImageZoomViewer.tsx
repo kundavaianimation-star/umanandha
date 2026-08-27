@@ -6,30 +6,28 @@ import { createPortal } from "react-dom";
 interface ImageZoomViewerProps {
   isOpen: boolean;
   onClose: () => void;
-  photoId: string;
-  sectionNumber: string | null;
+  imageUrl: string;
   photoTitle: string;
   photoCategory: string;
+  sectionNumber: string | null;
 }
 
 export function ImageZoomViewer({
   isOpen,
   onClose,
-  sectionNumber,
+  imageUrl,
   photoTitle,
-  photoCategory,
+  sectionNumber,
 }: ImageZoomViewerProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const panStartRef = useRef({ x: 0, y: 0 });
 
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 3;
 
-  // Reset on open
   useEffect(() => {
     if (!isOpen) return;
     const id = requestAnimationFrame(() => {
@@ -39,7 +37,6 @@ export function ImageZoomViewer({
     return () => cancelAnimationFrame(id);
   }, [isOpen]);
 
-  // Scroll lock
   useEffect(() => {
     if (!isOpen) return;
     const rightPanel = document.querySelector(".right-scroll-h") as HTMLElement | null;
@@ -57,7 +54,6 @@ export function ImageZoomViewer({
     };
   }, [isOpen]);
 
-  // ESC to close
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -86,9 +82,10 @@ export function ImageZoomViewer({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (zoom <= 1) return;
+      e.preventDefault();
       setDragging(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
-      setPanStart(pan);
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+      panStartRef.current = { ...pan };
     },
     [zoom, pan]
   );
@@ -96,11 +93,11 @@ export function ImageZoomViewer({
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!dragging) return;
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
-      setPan({ x: panStart.x + dx, y: panStart.y + dy });
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPan({ x: panStartRef.current.x + dx, y: panStartRef.current.y + dy });
     },
-    [dragging, dragStart, panStart]
+    [dragging]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -108,14 +105,23 @@ export function ImageZoomViewer({
   }, []);
 
   const lastTouchDistance = useRef<number>(0);
+  const lastTouchCenter = useRef({ x: 0, y: 0 });
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       lastTouchDistance.current = Math.sqrt(dx * dx + dy * dy);
+      lastTouchCenter.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+    } else if (e.touches.length === 1 && zoom > 1) {
+      setDragging(true);
+      dragStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      panStartRef.current = { ...pan };
     }
-  }, []);
+  }, [zoom, pan]);
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
@@ -127,23 +133,59 @@ export function ImageZoomViewer({
         const delta = (distance - lastTouchDistance.current) * 0.005;
         lastTouchDistance.current = distance;
         setZoom((prev) => clampZoom(prev + delta));
+      } else if (e.touches.length === 1 && dragging) {
+        const dx = e.touches[0].clientX - dragStartRef.current.x;
+        const dy = e.touches[0].clientY - dragStartRef.current.y;
+        setPan({ x: panStartRef.current.x + dx, y: panStartRef.current.y + dy });
       }
     },
-    [clampZoom]
+    [clampZoom, dragging]
   );
+
+  const handleTouchEnd = useCallback(() => {
+    setDragging(false);
+  }, []);
 
   if (!isOpen) return null;
 
   const viewerContent = (
-    <div className="zoom-overlay" onClick={onClose}>
-      <div className="zoom-controls">
-        <button onClick={(e) => { e.stopPropagation(); setZoom((z) => clampZoom(z - 0.5)); }} className="zoom-ctrl">
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 300,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(30, 18, 10, 0.95)",
+      }}
+    >
+      {/* Controls */}
+      <div
+        style={{
+          position: "absolute",
+          top: "1rem",
+          right: "1rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          zIndex: 10,
+        }}
+      >
+        <button
+          onClick={(e) => { e.stopPropagation(); setZoom((z) => clampZoom(z - 0.5)); }}
+          className="zoom-ctrl"
+        >
           &#x2212;
         </button>
         <span className="t-caption" style={{ color: "#F9F0E2", minWidth: "40px", textAlign: "center" }}>
           {Math.round(zoom * 100)}%
         </span>
-        <button onClick={(e) => { e.stopPropagation(); setZoom((z) => clampZoom(z + 0.5)); }} className="zoom-ctrl">
+        <button
+          onClick={(e) => { e.stopPropagation(); setZoom((z) => clampZoom(z + 0.5)); }}
+          className="zoom-ctrl"
+        >
           +
         </button>
         {zoom > 1 && (
@@ -160,51 +202,75 @@ export function ImageZoomViewer({
         </button>
       </div>
 
+      {/* Image area */}
       <div
-        ref={containerRef}
-        className="zoom-image-area"
-        onClick={(e) => e.stopPropagation()}
+        onClick={onClose}
         onWheel={handleWheel}
-        onDoubleClick={handleDoubleClick}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
-        style={{ cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in" }}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          userSelect: "none",
+          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
+          touchAction: "none",
+        }}
       >
         <div
-          className="zoom-image-inner"
+          onClick={(e) => e.stopPropagation()}
           style={{
+            transformOrigin: "center center",
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
             transition: dragging ? "none" : "transform 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
+            maxWidth: "90vw",
+            maxHeight: "85vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <div
-            className="w-full h-full flex items-center justify-center"
-            style={{ backgroundColor: "#EDE5D4" }}
-          >
-            <div className="text-center">
-              <span
-                className="t-display"
-                style={{ color: "rgba(50,32,20,0.15)", fontSize: "clamp(3rem, 8vw, 6rem)" }}
-              >
-                {sectionNumber || ""}
-              </span>
-              <p className="t-caption mt-4" style={{ color: "rgba(50,32,20,0.25)" }}>
-                {photoTitle}
-              </p>
-              <p className="t-caption mt-1" style={{ color: "rgba(50,32,20,0.2)" }}>
-                {photoCategory}
-              </p>
-            </div>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={photoTitle}
+            style={{
+              maxWidth: "90vw",
+              maxHeight: "85vh",
+              objectFit: "contain",
+              display: "block",
+              pointerEvents: "none",
+            }}
+            draggable={false}
+          />
         </div>
       </div>
 
-      <div className="zoom-bottom-info">
-        <p className="t-caption" style={{ color: "rgba(249,240,226,0.5)" }}>
+      {/* Bottom info */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "1.5rem",
+          left: "50%",
+          transform: "translateX(-50%)",
+          textAlign: "center",
+        }}
+      >
+        {sectionNumber && (
+          <p className="t-caption" style={{ color: "rgba(249,240,226,0.4)" }}>
+            {sectionNumber}
+          </p>
+        )}
+        <p className="t-caption" style={{ color: "rgba(249,240,226,0.3)" }}>
           scroll to zoom · double-click to toggle · drag to pan
         </p>
       </div>

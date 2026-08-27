@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, startTransition } from "react";
+import { useEffect, useState, useCallback, useRef, startTransition } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { Photo } from "@/lib/types";
+import { ImageEditor } from "@/components/admin/ImageEditor";
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, X } from "lucide-react";
 
 export default function AdminPhotosPage() {
@@ -17,10 +18,14 @@ export default function AdminPhotosPage() {
   const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [displayOrder, setDisplayOrder] = useState(0);
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [existingImageUrl, setExistingImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [editedBlob, setEditedBlob] = useState<Blob | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
   const loadPhotos = useCallback(async () => {
@@ -44,9 +49,11 @@ export default function AdminPhotosPage() {
     setCategory("");
     setLocation("");
     setDisplayOrder(0);
-    setImageFile(null);
     setExistingImageUrl("");
     setEditingPhoto(null);
+    setImagePreview(null);
+    setEditedBlob(null);
+    setShowEditor(false);
   };
 
   const openAddModal = () => {
@@ -63,16 +70,25 @@ export default function AdminPhotosPage() {
     setLocation(photo.location);
     setDisplayOrder(photo.display_order);
     setExistingImageUrl(photo.image_url);
-    setImageFile(null);
+    setImagePreview(photo.image_url);
+    setEditedBlob(null);
+    setShowEditor(false);
     setShowModal(true);
   };
 
-  const uploadImage = async (file: File): Promise<string> => {
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${Date.now()}.${fileExt}`;
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setImagePreview(url);
+    setEditedBlob(null);
+    setShowEditor(true);
+  };
+
+  const uploadImage = async (blob: Blob, fileName: string): Promise<string> => {
     const { error } = await supabase.storage
       .from("photos")
-      .upload(fileName, file, { upsert: true });
+      .upload(fileName, blob, { upsert: true, contentType: "image/jpeg" });
     if (error) throw error;
     const { data } = supabase.storage.from("photos").getPublicUrl(fileName);
     return data.publicUrl;
@@ -85,8 +101,16 @@ export default function AdminPhotosPage() {
     try {
       let imageUrl = existingImageUrl;
 
-      if (imageFile) {
-        imageUrl = await uploadImage(imageFile);
+      if (editedBlob) {
+        const fileExt = "jpg";
+        const fileName = `photo_${Date.now()}.${fileExt}`;
+        imageUrl = await uploadImage(editedBlob, fileName);
+      } else if (imagePreview && imagePreview !== existingImageUrl) {
+        const response = await fetch(imagePreview);
+        const blob = await response.blob();
+        const fileExt = "jpg";
+        const fileName = `photo_${Date.now()}.${fileExt}`;
+        imageUrl = await uploadImage(blob, fileName);
       }
 
       const photoData = {
@@ -177,7 +201,7 @@ export default function AdminPhotosPage() {
               >
                 {photo.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photo.image_url} alt="" className="w-full h-full object-cover" />
+                  <img src={photo.image_url} alt="" className="w-full h-full object-contain" />
                 ) : (
                   <span className="t-caption" style={{ color: "rgba(50,32,20,0.2)" }}>
                     {String(photo.display_order).padStart(2, "0")}
@@ -255,8 +279,8 @@ export default function AdminPhotosPage() {
           onClick={() => setShowModal(false)}
         >
           <div
-            className="w-full max-w-lg p-6 rounded"
-            style={{ backgroundColor: "#fff" }}
+            className="w-full max-w-lg p-6 rounded overflow-y-auto"
+            style={{ backgroundColor: "#fff", maxHeight: "90dvh" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
@@ -269,23 +293,95 @@ export default function AdminPhotosPage() {
             </div>
 
             <form onSubmit={handleSave}>
+              {/* Image section */}
               <div className="mb-4">
                 <label className="t-caption block mb-1" style={{ color: "#4A0B0B" }}>
                   IMAGE
                 </label>
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                  onChange={handleFileChange}
                   className="w-full t-p2"
                   style={{ color: "#322014" }}
                 />
-                {existingImageUrl && !imageFile && (
-                  <p className="t-caption mt-1" style={{ color: "#756E6B" }}>
-                    Current image will be kept
-                  </p>
-                )}
               </div>
+
+              {/* Image preview + editor */}
+              {imagePreview && (
+                <div className="mb-4">
+                  <p className="t-caption mb-2" style={{ color: "#756E6B" }}>
+                    {editedBlob
+                      ? "Edited image ready to save"
+                      : showEditor
+                        ? "Adjust crop, zoom and rotation below"
+                        : "Current image — click Choose File to replace"}
+                  </p>
+                  {!showEditor && (
+                    <div
+                      style={{
+                        width: "100%",
+                        maxHeight: "300px",
+                        overflow: "hidden",
+                        border: "1px solid rgba(50,32,20,0.12)",
+                        borderRadius: "2px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "#EDE5D4",
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={editedBlob ? URL.createObjectURL(editedBlob) : imagePreview}
+                        alt="Preview"
+                        style={{ width: "100%", height: "auto", objectFit: "contain", maxHeight: "300px" }}
+                      />
+                    </div>
+                  )}
+                  {showEditor && imagePreview && (
+                    <ImageEditor
+                      imageSrc={imagePreview}
+                      onEditComplete={(blob) => {
+                        setEditedBlob(blob);
+                        setShowEditor(false);
+                      }}
+                      onSkip={() => {
+                        setShowEditor(false);
+                      }}
+                    />
+                  )}
+                  {editedBlob && !showEditor && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditedBlob(null);
+                          setShowEditor(true);
+                        }}
+                        className="px-3 py-1.5 t-caption rounded"
+                        style={{ border: "1px solid rgba(50,32,20,0.15)", color: "#4A0B0B", background: "#fff", cursor: "pointer" }}
+                      >
+                        RE-EDIT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditedBlob(null);
+                          setImagePreview(null);
+                          setShowEditor(false);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        className="px-3 py-1.5 t-caption rounded"
+                        style={{ border: "1px solid rgba(50,32,20,0.15)", color: "#FF423F", background: "#fff", cursor: "pointer" }}
+                      >
+                        REMOVE IMAGE
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mb-4">
                 <label className="t-caption block mb-1" style={{ color: "#4A0B0B" }}>

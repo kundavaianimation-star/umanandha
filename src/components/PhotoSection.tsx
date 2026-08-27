@@ -50,7 +50,7 @@ export function PhotoSection({ photo, sectionNumber }: PhotoSectionProps) {
                 <img
                   src={photo.image_url}
                   alt={photo.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
               ) : (
                 <div
@@ -118,7 +118,7 @@ export function PhotoSection({ photo, sectionNumber }: PhotoSectionProps) {
       <ImageZoomViewer
         isOpen={zoomOpen}
         onClose={() => setZoomOpen(false)}
-        photoId={photo.id}
+        imageUrl={photo.image_url}
         sectionNumber={formatted}
         photoTitle={photo.title}
         photoCategory={photo.category}
