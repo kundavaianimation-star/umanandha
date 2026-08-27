@@ -3,8 +3,8 @@ import { cookies } from "next/headers";
 
 export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) => {
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://txdwhearutsdbppkrwyv.supabase.co",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_H2mBu1943xFJ5FTinuywRQ_vuNf2LFF",
     {
       cookies: {
         getAll() {
