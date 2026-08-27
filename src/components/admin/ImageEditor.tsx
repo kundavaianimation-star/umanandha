@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import Cropper from "react-easy-crop";
-import { getCroppedImg, type PixelCrop } from "@/lib/cropImage";
+import {
+  getCroppedImg,
+  processImage,
+  buildPreviewFilter,
+  type PixelCrop,
+  type Adjustments,
+} from "@/lib/cropImage";
 import { RotateCcw, RotateCw, Crop, ZoomIn, ZoomOut } from "lucide-react";
 
 interface ImageEditorProps {
@@ -19,6 +25,22 @@ const RATIO_PRESETS = [
   { label: "16:9", value: 16 / 9 },
 ];
 
+const FILTER_PRESETS = [
+  { label: "Original", value: "original" },
+  { label: "B&W", value: "bw" },
+  { label: "Warm", value: "warm" },
+  { label: "Cool", value: "cool" },
+  { label: "Faded", value: "faded" },
+  { label: "High Contrast", value: "high-contrast" },
+];
+
+const DEFAULT_ADJUSTMENTS: Adjustments = {
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+  filter: "original",
+};
+
 export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -27,6 +49,12 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<PixelCrop | null>(null);
   const [isCropping, setIsCropping] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const [adjustments, setAdjustments] = useState<Adjustments>({ ...DEFAULT_ADJUSTMENTS });
+
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onCropComplete = useCallback(
     (_croppedArea: unknown, croppedAreaPixels: PixelCrop) => {
@@ -35,12 +63,81 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
     []
   );
 
-  const handleApplyCrop = async () => {
-    if (!croppedAreaPixels) return;
+  const updatePreview = useCallback(
+    (adj: Adjustments, rot: number) => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = setTimeout(async () => {
+        try {
+          const blob = await processImage(imageSrc, rot, adj);
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            setPreviewUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev);
+              return url;
+            });
+          }
+        } catch {
+          // preview generation failed silently
+        }
+      }, 300);
+    },
+    [imageSrc]
+  );
+
+  const setBrightness = (v: number) => {
+    const next = { ...adjustments, brightness: v };
+    setAdjustments(next);
+    updatePreview(next, rotation);
+  };
+
+  const setContrast = (v: number) => {
+    const next = { ...adjustments, contrast: v };
+    setAdjustments(next);
+    updatePreview(next, rotation);
+  };
+
+  const setSaturation = (v: number) => {
+    const next = { ...adjustments, saturation: v };
+    setAdjustments(next);
+    updatePreview(next, rotation);
+  };
+
+  const setFilter = (v: string) => {
+    const next = { ...adjustments, filter: v };
+    setAdjustments(next);
+    updatePreview(next, rotation);
+  };
+
+  const handleRotate = (delta: number) => {
+    const next = rotation + delta;
+    setRotation(next);
+    updatePreview(adjustments, next);
+  };
+
+  const hasAdjustments =
+    adjustments.brightness !== 0 ||
+    adjustments.contrast !== 0 ||
+    adjustments.saturation !== 0 ||
+    adjustments.filter !== "original" ||
+    rotation !== 0;
+
+  const handleApplyAll = async () => {
     setProcessing(true);
     try {
-      const blob = await getCroppedImg(imageSrc, croppedAreaPixels, rotation);
-      if (blob) onEditComplete(blob);
+      if (isCropping && croppedAreaPixels) {
+        const blob = await getCroppedImg(
+          imageSrc,
+          croppedAreaPixels,
+          rotation,
+          adjustments
+        );
+        if (blob) onEditComplete(blob);
+      } else if (hasAdjustments) {
+        const blob = await processImage(imageSrc, rotation, adjustments);
+        if (blob) onEditComplete(blob);
+      } else {
+        onSkip();
+      }
     } finally {
       setProcessing(false);
     }
@@ -51,6 +148,11 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
     setZoom(1);
     setRotation(0);
     setAspectRatio(null);
+    setAdjustments({ ...DEFAULT_ADJUSTMENTS });
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
   };
 
   const handleCropMode = () => {
@@ -62,9 +164,11 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
     }
   };
 
+  const liveFilter = buildPreviewFilter(adjustments);
+
   return (
     <div style={{ width: "100%" }}>
-      {/* Crop area */}
+      {/* Crop area with live filter overlay */}
       <div
         style={{
           position: "relative",
@@ -76,25 +180,33 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
           marginBottom: "12px",
         }}
       >
-        <Cropper
-          image={imageSrc}
-          crop={crop}
-          zoom={zoom}
-          rotation={rotation}
-          aspect={isCropping && aspectRatio !== null ? aspectRatio : undefined}
-          onCropChange={setCrop}
-          onZoomChange={setZoom}
-          onRotationChange={setRotation}
-          onCropComplete={onCropComplete}
-          cropSize={isCropping ? undefined : undefined}
-          showGrid={isCropping}
+        <div
           style={{
-            containerStyle: {
-              width: "100%",
-              height: "100%",
-            },
+            position: "absolute",
+            inset: 0,
+            filter: liveFilter,
+            zIndex: 1,
           }}
-        />
+        >
+          <Cropper
+            image={imageSrc}
+            crop={crop}
+            zoom={zoom}
+            rotation={rotation}
+            aspect={isCropping && aspectRatio !== null ? aspectRatio : undefined}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onRotationChange={setRotation}
+            onCropComplete={onCropComplete}
+            showGrid={isCropping}
+            style={{
+              containerStyle: {
+                width: "100%",
+                height: "100%",
+              },
+            }}
+          />
+        </div>
       </div>
 
       {/* Zoom controls */}
@@ -120,7 +232,7 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
       <div className="flex items-center gap-2 mb-3">
         <button
           type="button"
-          onClick={() => setRotation((r) => r - 90)}
+          onClick={() => handleRotate(-90)}
           className="p-2 rounded"
           style={{ border: "1px solid rgba(50,32,20,0.15)", color: "#4A0B0B", background: "#fff", cursor: "pointer" }}
         >
@@ -131,7 +243,7 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
         </span>
         <button
           type="button"
-          onClick={() => setRotation((r) => r + 90)}
+          onClick={() => handleRotate(90)}
           className="p-2 rounded"
           style={{ border: "1px solid rgba(50,32,20,0.15)", color: "#4A0B0B", background: "#fff", cursor: "pointer" }}
         >
@@ -155,34 +267,116 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
           <Crop size={12} />
           CROP
         </button>
-
-        {isCropping && (
-          <>
-            {RATIO_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => setAspectRatio(preset.value)}
-                className="px-2 py-1 t-caption rounded"
-                style={{
-                  border:
-                    aspectRatio === preset.value
-                      ? "1px solid #4A0B0B"
-                      : "1px solid rgba(50,32,20,0.15)",
-                  color: aspectRatio === preset.value ? "#F9F0E2" : "#756E6B",
-                  background: aspectRatio === preset.value ? "#4A0B0B" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </>
-        )}
+        {isCropping &&
+          RATIO_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => setAspectRatio(preset.value)}
+              className="px-2 py-1 t-caption rounded"
+              style={{
+                border:
+                  aspectRatio === preset.value
+                    ? "1px solid #4A0B0B"
+                    : "1px solid rgba(50,32,20,0.15)",
+                color: aspectRatio === preset.value ? "#F9F0E2" : "#756E6B",
+                background: aspectRatio === preset.value ? "#4A0B0B" : "#fff",
+                cursor: "pointer",
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
       </div>
 
+      {/* Divider */}
+      <div style={{ borderTop: "1px solid rgba(50,32,20,0.08)", margin: "12px 0" }} />
+
+      {/* Brightness */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1">
+          <label className="t-caption" style={{ color: "#4A0B0B" }}>BRIGHTNESS</label>
+          <span className="t-caption" style={{ color: "#756E6B" }}>{adjustments.brightness}</span>
+        </div>
+        <input
+          type="range"
+          min={-100}
+          max={100}
+          step={1}
+          value={adjustments.brightness}
+          onChange={(e) => setBrightness(Number(e.target.value))}
+          className="w-full"
+          style={{ accentColor: "#4A0B0B" }}
+        />
+      </div>
+
+      {/* Contrast */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1">
+          <label className="t-caption" style={{ color: "#4A0B0B" }}>CONTRAST</label>
+          <span className="t-caption" style={{ color: "#756E6B" }}>{adjustments.contrast}</span>
+        </div>
+        <input
+          type="range"
+          min={-100}
+          max={100}
+          step={1}
+          value={adjustments.contrast}
+          onChange={(e) => setContrast(Number(e.target.value))}
+          className="w-full"
+          style={{ accentColor: "#4A0B0B" }}
+        />
+      </div>
+
+      {/* Saturation */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1">
+          <label className="t-caption" style={{ color: "#4A0B0B" }}>SATURATION</label>
+          <span className="t-caption" style={{ color: "#756E6B" }}>{adjustments.saturation}</span>
+        </div>
+        <input
+          type="range"
+          min={-100}
+          max={100}
+          step={1}
+          value={adjustments.saturation}
+          onChange={(e) => setSaturation(Number(e.target.value))}
+          className="w-full"
+          style={{ accentColor: "#4A0B0B" }}
+        />
+      </div>
+
+      {/* Filters */}
+      <div className="mb-3">
+        <label className="t-caption block mb-1" style={{ color: "#4A0B0B" }}>FILTER</label>
+        <div className="flex gap-1 flex-wrap">
+          {FILTER_PRESETS.map((preset) => (
+            <button
+              key={preset.value}
+              type="button"
+              onClick={() => setFilter(preset.value)}
+              className="px-2 py-1 t-caption rounded"
+              style={{
+                border:
+                  adjustments.filter === preset.value
+                    ? "1px solid #4A0B0B"
+                    : "1px solid rgba(50,32,20,0.15)",
+                color: adjustments.filter === preset.value ? "#F9F0E2" : "#756E6B",
+                background: adjustments.filter === preset.value ? "#4A0B0B" : "#fff",
+                cursor: "pointer",
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div style={{ borderTop: "1px solid rgba(50,32,20,0.08)", margin: "12px 0" }} />
+
       {/* Action buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button
           type="button"
           onClick={handleReset}
@@ -211,7 +405,7 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
         </button>
         <button
           type="button"
-          onClick={handleApplyCrop}
+          onClick={handleApplyAll}
           disabled={processing}
           className="px-4 py-2 t-caption rounded"
           style={{
@@ -222,9 +416,11 @@ export function ImageEditor({ imageSrc, onEditComplete, onSkip }: ImageEditorPro
             opacity: processing ? 0.5 : 1,
           }}
         >
-          {processing ? "PROCESSING..." : "APPLY CROP"}
+          {processing ? "PROCESSING..." : hasAdjustments || isCropping ? "APPLY EDIT" : "APPLY"}
         </button>
       </div>
+
+      <canvas ref={previewCanvasRef} style={{ display: "none" }} />
     </div>
   );
 }
