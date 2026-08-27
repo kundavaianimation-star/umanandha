@@ -155,15 +155,10 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   padding: 4vh 3vw;
-  border: 1px dashed rgba(74, 11, 11, 0.18);
-  border-radius: 2px;
   scroll-snap-align: center;
   position: relative;
-  transition: border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.photo-box:hover {
-  border-color: rgba(74, 11, 11, 0.28);
 }
 
 /* ===== GALLERY ITEM (about page panels) ===== */
@@ -188,9 +183,28 @@ html, body {
 
 .photo-box-image {
   width: 100%;
-  height: 60vh;
+  max-width: 100%;
   overflow: hidden;
   flex-shrink: 0;
+  border: 1px dashed rgba(74, 11, 11, 0.18);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #EDE5D4;
+  transition: border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.photo-box-image:hover {
+  border-color: rgba(74, 11, 11, 0.28);
+}
+
+.photo-box-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 72vh;
+  object-fit: contain;
+  cursor: zoom-in;
 }
 
 .photo-box-caption {
@@ -597,7 +611,7 @@ html, body {
   }
 
   .photo-box-image {
-    height: 50vh;
+    width: 100%;
   }
 
   .modal-overlay {

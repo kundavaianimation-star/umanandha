@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Photo, Perception } from "@/lib/types";
 import { PerceptionButton } from "./PerceptionButton";
 import { PerceptionModal } from "./PerceptionModal";
@@ -19,6 +19,8 @@ export function PhotoSection({ photo, sectionNumber }: PhotoSectionProps) {
   const [perceptionOpen, setPerceptionOpen] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [perceptions, setPerceptions] = useState<Perception[]>([]);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     fetchPerceptions(photo.id)
@@ -26,13 +28,19 @@ export function PhotoSection({ photo, sectionNumber }: PhotoSectionProps) {
       .catch(() => {});
   }, [photo.id]);
 
+  useEffect(() => {
+    if (imgRef.current && imgRef.current.complete) {
+      setImageLoaded(true);
+    }
+  }, [photo.image_url]);
+
   const formatted =
     sectionNumber !== undefined ? String(sectionNumber).padStart(2, "0") : null;
 
   return (
     <>
       <div className="photo-box">
-        {/* Section number */}
+        {/* Section number — positioned relative to the box */}
         {formatted && (
           <div className="photo-box-number">
             <span className="section-number">{formatted}</span>
@@ -47,15 +55,19 @@ export function PhotoSection({ photo, sectionNumber }: PhotoSectionProps) {
               onClick={() => setZoomOpen(true)}
             >
               {photo.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
+                  ref={imgRef}
                   src={photo.image_url}
                   alt={photo.title}
-                  className="w-full h-full object-contain"
+                  className="photo-box-img"
+                  onLoad={() => setImageLoaded(true)}
+                  style={{ opacity: imageLoaded ? 1 : 0, transition: "opacity 0.3s ease" }}
                 />
               ) : (
                 <div
-                  className="w-full h-full flex items-center justify-center"
-                  style={{ backgroundColor: "#EDE5D4" }}
+                  className="w-full flex items-center justify-center"
+                  style={{ backgroundColor: "#EDE5D4", padding: "4rem 2rem" }}
                 >
                   <div className="text-center">
                     <div
@@ -104,7 +116,6 @@ export function PhotoSection({ photo, sectionNumber }: PhotoSectionProps) {
         isOpen={perceptionOpen}
         onClose={() => {
           setPerceptionOpen(false);
-          // Refresh perceptions after closing modal
           fetchPerceptions(photo.id)
             .then(setPerceptions)
             .catch(() => {});
